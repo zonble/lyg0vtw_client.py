@@ -12,15 +12,29 @@ except:
 	import urllib2 as request
 	import urllib as urlparse
 
+def assert_args(func, *args):
+	def inner(*args):
+		required_arg = args[1]
+		assert(len(required_arg) > 0)
+		func(*args)
+	return inner
+
 class LY_G0V_Client:
 	BASE_URL = 'http://api-beta.ly.g0v.tw/v0/'
 	# BASE_URL = 'http://api.ly.g0v.tw/v0/'
 
 	def _fetch_data(self, url_path):
 		URL = LY_G0V_Client.BASE_URL + url_path
-		f = request.urlopen(URL)
-		r = f.read()
-		return json.loads(r.decode('utf-8'))
+		print(URL)
+		try:
+			f = request.urlopen(URL)
+			r = f.read()
+			obj = json.loads(r.decode('utf-8'))
+			if not obj:
+				raise Error("No object " + r)
+			return obj
+		except Exception as e:
+			raise e
 
 	def fetch_all_bills(self):
 		'Fetch all bills.'
@@ -30,30 +44,44 @@ class LY_G0V_Client:
 		'Fetch all motions.'
 		return self._fetch_data('collections/motions')
 
+	def fetch_all_sittings(self):
+		'Fetch all sittings.'
+		return self._fetch_data('collections/sittings')
+
+	@assert_args
 	def fetch_bill(self, bill_id):
 		'Fetch metadata of a specific bill.'
-		assert(len(bill_id) > 0)
 		return self._fetch_data('collections/bills/' + str(bill_id))
 
+	@assert_args
 	def fetch_bill_data(self, bill_id):
 		'Fetch data of a specific bill.'
 		assert(len(bill_id) > 0)
 		return self._fetch_data('collections/bills/' + str(bill_id) + '/data')
 
+	@assert_args
 	def fetch_motions_related_with_bill(self, bill_id):
 		'Fetch motions related with a specific bill.'
-		assert(len(bill_id) > 0)
 		query = json.dumps({'bill_ref': bill_id})
 		query = urlparse.quote(query)
 		return self._fetch_data('collections/motions/?q='+query)
+
+	@assert_args
+	def fetch_sitting(self, sitting_id):
+		'Fetch metadata of a specific bill.'
+		return self._fetch_data('collections/bills/' + str(bill_id))
+
 
 
 class TestClient(unittest.TestCase):
 
 	def setUp(self):
+		import time
+		time.sleep(1)
 		self.client = LY_G0V_Client()
 
 	def _test_bill(self, bill):
+		self.assertTrue(isinstance(bill, dict), str(type(bill)))
 		keys = ('proposed_by', 'doc', 'abstract', 'sponsors',
 				'summary', 'bill_ref', 'motions', 'cosponsors',
 				'bill_id');
@@ -63,7 +91,16 @@ class TestClient(unittest.TestCase):
 			self.assertTrue('pdf' in bill['doc'])
 			self.assertTrue('doc' in bill['doc'])
 
+	def _test_bills(self, bills):
+		for key in ('entries', 'paging'):
+			self.assertTrue(key in bills)
+		for key in ('l', 'sk', 'count'):
+			self.assertTrue(key in bills['paging'])
+		for bill in bills['entries']:
+			self._test_bill(bill)
+
 	def _test_motion(self, motion):
+		self.assertTrue(isinstance(motion, dict), str(type(motion)))
 		keys = ('result', 'resolution', 'motion_class', 'bill_id',
 				'agenda_item', 'bill_ref', 'tts_id',
 				'subitem', 'status', 'sitting_id', 'item',
@@ -75,21 +112,13 @@ class TestClient(unittest.TestCase):
 			self.assertTrue('doc' in motion['doc'])
 
 	def _test_motions(self, motions):
+		self.assertTrue(isinstance(motions, dict), str(type(motions)))
 		for key in ('entries', 'paging'):
 			self.assertTrue(key in motions)
 		for key in ('l', 'sk', 'count'):
 			self.assertTrue(key in motions['paging'])
 		for motion in motions['entries']:
 			self._test_motion(motion)
-
-	def test_all_bills(self):
-		bills = self.client.fetch_all_bills()
-		for key in ('entries', 'paging'):
-			self.assertTrue(key in bills)
-		for key in ('l', 'sk', 'count'):
-			self.assertTrue(key in bills['paging'])
-		for bill in bills['entries']:
-			self._test_bill(bill)
 
 	def _test_data(self, data):
 		for key in ('related', 'content'):
@@ -101,9 +130,11 @@ class TestClient(unittest.TestCase):
 			for content_key in content_keys:
 				self.assertTrue(content_key in item)
 			self.assertTrue(len(item['name']) > 0)
-			self.assertTrue(isinstance(item['name'], str))
+			self.assertTrue(isinstance(item['name'], str) or \
+								isinstance(item['name'], unicode))
 			self.assertTrue(len(item['type']) > 0)
-			self.assertTrue(isinstance(item['type'], str))
+			self.assertTrue(isinstance(item['type'], str) or \
+								isinstance(item['type'], unicode))
 			self.assertTrue(len(item['content']) > 0)
 			self.assertTrue(isinstance(item['content'], list))
 			for content in item['content']:
@@ -113,11 +144,22 @@ class TestClient(unittest.TestCase):
 			self.assertTrue(len(item['header']) > 0)
 			self.assertTrue(isinstance(item['header'], list))
 			for header in item['header']:
-				self.assertTrue(isinstance(header, str))
+				self.assertTrue(isinstance(header, str) or \
+									isinstance(header, unicode))
+
+	def test_all_bills(self):
+		bills = self.client.fetch_all_bills()
+		self._test_bills(bills)
 
 	def test_all_motions(self):
 		motions = self.client.fetch_all_motions()
 		self._test_motions(motions)
+
+	def test_all_sittings(self):
+		sittings = self.client.fetch_all_sittings()
+		# print(sittings.keys())
+		# print(sittings['entries'][0].keys())
+		pass
 
 	def test_fetch_bill(self):
 		bill = self.client.fetch_bill('1772G13550')
