@@ -16,7 +16,7 @@ def assert_args(func, *args):
 	def inner(*args):
 		required_arg = args[1]
 		assert(len(required_arg) > 0)
-		func(*args)
+		return func(*args)
 	return inner
 
 class LY_G0V_Client:
@@ -25,15 +25,13 @@ class LY_G0V_Client:
 
 	def _fetch_data(self, url_path):
 		URL = LY_G0V_Client.BASE_URL + url_path
-		print(URL)
 		try:
 			f = request.urlopen(URL)
 			r = f.read()
-			obj = json.loads(r.decode('utf-8'))
-			if not obj:
-				raise Error("No object " + r)
-			return obj
+			r = r.decode('utf-8')
+			return json.loads(r)
 		except Exception as e:
+			print("Failed to call " + URL)
 			raise e
 
 	def fetch_all_bills(self):
@@ -147,6 +145,23 @@ class TestClient(unittest.TestCase):
 				self.assertTrue(isinstance(header, str) or \
 									isinstance(header, unicode))
 
+	def _test_sitting(self, sitting):
+		self.assertTrue(isinstance(sitting, dict), str(type(sitting)))
+		keys = ('dates', 'ad', 'videos', 'extra', 'motions',
+				'sitting', 'summary', 'session', 'committee', 'id',
+				'name')
+		for key in keys:
+			self.assertTrue(key in sitting, key)
+
+	def _test_sittings(self, sittings):
+		self.assertTrue(isinstance(sittings, dict), str(type(sittings)))
+		for key in ('entries', 'paging'):
+			self.assertTrue(key in sittings)
+		for key in ('l', 'sk', 'count'):
+			self.assertTrue(key in sittings['paging'])
+		for sitting in sittings['entries']:
+			self._test_sitting(sitting)
+
 	def test_all_bills(self):
 		bills = self.client.fetch_all_bills()
 		self._test_bills(bills)
@@ -157,22 +172,19 @@ class TestClient(unittest.TestCase):
 
 	def test_all_sittings(self):
 		sittings = self.client.fetch_all_sittings()
-		# print(sittings.keys())
-		# print(sittings['entries'][0].keys())
-		pass
+		self._test_sittings(sittings)
 
 	def test_fetch_bill(self):
-		bill = self.client.fetch_bill('1772G13550')
+		bill = self.client.fetch_bill('1021021071000400')
 		self._test_bill(bill)
 
 	def test_fetch_bill_data(self):
-		data = self.client.fetch_bill_data('1772G13550')
+		data = self.client.fetch_bill_data('1021021071000400')
 		self._test_data(data)
 
 	def test_fetch_motions_related_with_bill(self):
-		motions = self.client.fetch_motions_related_with_bill('1772G13550')
+		motions = self.client.fetch_motions_related_with_bill('1021021071000400')
 		self._test_motions(motions)
-
 
 if __name__ == '__main__':
 	unittest.main()
